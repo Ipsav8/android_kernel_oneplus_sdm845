@@ -49,12 +49,21 @@ jobs:
             grep -E "error:|Rejected|No such file" apply0002.log | head -60
           } | tee -a $GITHUB_STEP_SUMMARY
 
+      - name: Collect files for porting
+        if: always()
+        run: |
+          mkdir -p collect
+          for f in fs/Makefile fs/proc/cmdline.c kernel/reboot.c; do
+            mkdir -p collect/$(dirname $f); cp $f collect/$f || true
+          done
+          find . -name '*.rej' -not -path './collect/*' -exec cp --parents {} collect/ \;
+          cp apply0002.log collect/ || true
+          cp ../susfs-port/patches/*/0002-*.patch collect/ || true
+          ls -R collect | head -40
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: susfs-dryrun
-          path: |
-            apply0002.log
-            **/*.rej
+          name: susfs-porting-files
+          path: collect/
           if-no-files-found: ignore
-          
