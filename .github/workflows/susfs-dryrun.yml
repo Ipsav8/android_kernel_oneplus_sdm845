@@ -1,0 +1,60 @@
+name: SUSFS patch dry run (no compile)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Get ReSukiSU and the 4.19 SUSFS port
+        run: |
+          git clone https://github.com/ReSukiSU/ReSukiSU.git ReSukiSU
+          if git -C ReSukiSU checkout d5e9e025; then echo "ReSukiSU pinned commit ok"; else echo "PINNED COMMIT MISSING - using latest"; fi
+          git -C ReSukiSU log -1 --oneline
+          git clone --depth=1 https://github.com/fabiannabil1/susfs-4.19-nongki.git ../susfs-port
+          ls ../susfs-port/patches/*/
+
+      - name: Patch 0001 (KernelSU link)
+        run: |
+          P=$(ls -d ../susfs-port/patches/*/ | head -1)
+          if git apply --check "$P/0001-kernelsu-integration.patch"; then
+            git apply "$P/0001-kernelsu-integration.patch" && echo "RESULT 0001: OK"
+          else
+            echo "RESULT 0001: FAILED"
+          fi
+
+      - name: Patch 0002 (SUSFS v2.3.0 for 4.19)
+        run: |
+          P=$(ls -d ../susfs-port/patches/*/ | head -1)
+          git apply --reject --whitespace=nowarn "$P/0002-susfs-v2.3.0-4.19.patch" 2>&1 | tee apply0002.log || true
+          echo "-----"
+          echo "Rejected hunks files:"
+          find . -name '*.rej' | sort
+          echo "Count: $(find . -name '*.rej' | wc -l)"
+          echo "Missing files:"
+          grep -E "No such file|does not exist" apply0002.log || echo "none"
+
+      - name: Summary
+        run: |
+          {
+            echo "## SUSFS dry run"
+            echo "Rejected files: $(find . -name '*.rej' | wc -l)"
+            find . -name '*.rej' | sort
+            echo "### Errors"
+            grep -E "error:|Rejected|No such file" apply0002.log | head -60
+          } | tee -a $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: susfs-dryrun
+          path: |
+            apply0002.log
+            **/*.rej
+          if-no-files-found: ignore
+          
