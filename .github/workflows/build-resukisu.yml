@@ -35,8 +35,20 @@ jobs:
           git -C ReSukiSU checkout d5e9e025
           git clone --depth=1 https://github.com/fabiannabil1/susfs-4.19-nongki.git ../susfs-port
           P=$(ls -d ../susfs-port/patches/*/ | head -1)
-          git apply "$P/0001-kernelsu-integration.patch"
-          echo "0001 applied"
+          ln -sfn ../ReSukiSU/kernel drivers/kernelsu
+          grep -q 'kernelsu' drivers/Makefile || printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> drivers/Makefile
+          python3 - << 'PYEOF'
+          p = "drivers/Kconfig"
+          lines = open(p).read().split("\n")
+          if not any("kernelsu" in l for l in lines):
+              idx = max(i for i, l in enumerate(lines) if l.startswith("endmenu"))
+              lines.insert(idx, 'source "drivers/kernelsu/Kconfig"')
+              open(p, "w").write("\n".join(lines))
+              print("drivers/Kconfig edited")
+          else:
+              print("drivers/Kconfig already has kernelsu")
+          PYEOF
+          echo "KernelSU linked:"; ls drivers/kernelsu/ | head -5
           git apply --reject --whitespace=nowarn "$P/0002-susfs-v2.3.0-4.19.patch" || true
           find . -name '*.rej' | sort
 
