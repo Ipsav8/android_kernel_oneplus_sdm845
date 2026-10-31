@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       defconfig:
-        description: "Leave empty to auto-detect enchilada defconfig"
+        description: "Leave empty to use vendor/sdm845-perf_defconfig + enchilada.config"
         default: ""
 
 jobs:
@@ -29,16 +29,18 @@ jobs:
       - name: Find defconfig
         run: |
           DEF="${{ inputs.defconfig }}"
-          if [ -z "$DEF" ]; then
-            DEF=$(cd arch/arm64/configs && find . -name '*enchilada*defconfig' | head -1 | sed 's|^\./||')
-          fi
-          if [ -z "$DEF" ] || [ ! -f "arch/arm64/configs/$DEF" ]; then
+          if [ -z "$DEF" ]; then DEF="vendor/sdm845-perf_defconfig"; fi
+          FRAG="vendor/enchilada.config"
+          if [ ! -f "arch/arm64/configs/$DEF" ]; then
             echo "DEFCONFIG NOT FOUND. Candidates:"
             find arch/arm64/configs \( -iname '*enchilada*' -o -iname '*sdm845*' -o -iname '*oneplus*' \)
             exit 1
           fi
+          if [ ! -f "arch/arm64/configs/$FRAG" ]; then FRAG=""; fi
           echo "Using defconfig: $DEF"
+          echo "Using fragment: $FRAG"
           echo "DEFCONFIG=$DEF" >> $GITHUB_ENV
+          echo "FRAGMENT=$FRAG" >> $GITHUB_ENV
 
       - name: Build
         run: |
@@ -49,6 +51,10 @@ jobs:
             CROSS_COMPILE_COMPAT=arm-linux-gnueabi- \
             KCFLAGS=-Wno-error"
           make $ARGS $DEFCONFIG 2>&1 | tee build.log
+          if [ -n "$FRAGMENT" ]; then
+            scripts/kconfig/merge_config.sh -m -O out out/.config arch/arm64/configs/$FRAGMENT 2>&1 | tee -a build.log
+            make $ARGS olddefconfig 2>&1 | tee -a build.log
+          fi
           make -j$(nproc) $ARGS 2>&1 | tee -a build.log
 
       - name: Show last errors
