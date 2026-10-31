@@ -115,6 +115,18 @@ jobs:
           test -f fs/susfs.c && echo "fs/susfs.c present"
           ls drivers/kernelsu/ | head -5
 
+      - name: Skip OnePlus 6T (fajita) overlays
+        run: |
+          python3 - << 'PYEOF'
+          import re
+          p = "arch/arm64/boot/dts/qcom/Makefile"
+          s = open(p).read()
+          n, c = re.subn(r"fajita[A-Za-z0-9_.+-]*\.dtbo?", "", s)
+          open(p, "w").write(n)
+          print("removed fajita entries:", c)
+          PYEOF
+          grep -n "fajita" arch/arm64/boot/dts/qcom/Makefile || echo "no fajita left in qcom/Makefile"
+
       - name: Configure
         run: |
           set -eo pipefail
@@ -142,9 +154,9 @@ jobs:
       - name: Show real error
         if: failure()
         run: |
-          grep -nE "error:|undefined reference|\*\*\* \[" build.log | head -30 || true
+          grep -nE "ERROR:|error:|undefined reference|\*\*\* \[" build.log | head -30 || true
           echo "---- single-thread rerun to expose the first error ----"
-          make -j1 $ARGS 2>&1 | grep -E -B3 -A6 "error:|\*\*\* \[" | head -60 || true
+          make -j1 $ARGS 2>&1 | grep -E -B3 -A6 "ERROR:|error:|\*\*\* \[" | head -60 || true
 
       - name: Show kernel version
         run: |
