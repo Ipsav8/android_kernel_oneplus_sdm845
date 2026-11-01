@@ -15,6 +15,13 @@ on:
         description: "BakaSU commit or branch (d5e9e025 = the tested version)"
         type: string
         default: "d5e9e025"
+      publish_release:
+        description: "Also publish the zip as a GitHub Release (public download link)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -240,6 +247,33 @@ jobs:
         with:
           name: ${{ env.ZIPNAME }}
           path: ${{ env.ZIPNAME }}.zip
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          KREL=$(cat out/include/config/kernel.release)
+          TAG="op6-$(date +%Y%m%d-%H%M)"
+          HASH=$(sha256sum "$ZIPNAME.zip" | cut -d' ' -f1)
+          {
+            echo "OnePlus 6 (enchilada) kernel for LineageOS 24.0 (Android 17)"
+            echo ""
+            echo "- Kernel: $KREL"
+            echo "- Kernel source: EdwinMoq/android_kernel_oneplus_sdm845, commit ${{ env.SRC_SHA }}"
+            if [ "${{ inputs.with_root }}" = "true" ]; then
+              echo "- Root: BakaSU (ReSukiSU), commit ${{ inputs.bakasu_ref }}, with SUSFS v2.3.0"
+              echo "- Manager: install the latest BakaSU manager (its version must be at least the kernel driver version)"
+            else
+              echo "- Plain kernel, no root"
+            fi
+            echo "- SHA256: $HASH"
+            echo ""
+            echo "Only for a ROM whose kernel version starts with 4.19.325-cip136-st20. Back up your boot image first (Kernel Flasher > Backup). Flash the zip with Kernel Flasher or a custom recovery. Use at your own risk."
+            echo ""
+            echo "Source and build recipe: this repository, workflow build-bakasu.yml"
+          } > notes.md
+          gh release create "$TAG" "$ZIPNAME.zip" --title "$TAG" --notes-file notes.md
 
       - uses: actions/upload-artifact@v4
         if: always()
