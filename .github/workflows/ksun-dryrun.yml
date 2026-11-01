@@ -14,7 +14,18 @@ jobs:
     steps:
       - name: Resolve source commit
         run: |
-          SHA=$(curl -sf "https://api.github.com/repos/EdwinMoq/android_kernel_oneplus_sdm845/commits/${{ inputs.source_commit }}" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+          URL="https://api.github.com/repos/EdwinMoq/android_kernel_oneplus_sdm845/commits/${{ inputs.source_commit }}"
+          SHA=""
+          for i in 1 2 3 4 5; do
+            SHA=$(curl -sf -H "Authorization: Bearer ${{ github.token }}" -H "Accept: application/vnd.github+json" "$URL" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])" 2>/dev/null) && [ -n "$SHA" ] && break
+            echo "attempt $i failed, retrying in 10s"
+            sleep 10
+          done
+          if [ -z "$SHA" ]; then
+            echo "Could not resolve the commit. API answered:"
+            curl -s -i -H "Authorization: Bearer ${{ github.token }}" "$URL" | head -15
+            exit 1
+          fi
           echo "Resolved to $SHA"
           echo "SRC_SHA=$SHA" >> $GITHUB_ENV
 
