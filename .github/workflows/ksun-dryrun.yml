@@ -1,0 +1,70 @@
+name: KernelSU Next dry run (no compile)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: "Kernel commit (your ROM's)"
+        type: string
+        default: "78b1551a71ea"
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Resolve source commit
+        run: |
+          SHA=$(curl -sf "https://api.github.com/repos/EdwinMoq/android_kernel_oneplus_sdm845/commits/${{ inputs.source_commit }}" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+          echo "Resolved to $SHA"
+          echo "SRC_SHA=$SHA" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SRC_SHA }}
+          fetch-depth: 1
+
+      - name: Get KernelSU Next and the SUSFS port
+        run: |
+          git clone https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+          echo "=== KernelSU Next branches:"
+          git -C KernelSU-Next branch -r | sed 's|origin/||' | head -40
+          git clone --depth=1 https://github.com/fabiannabil1/susfs-4.19-nongki.git ../susfs-port
+          ls ../susfs-port/patches/*/
+
+      - name: Apply SUSFS patch (once)
+        run: |
+          P=$(ls -d ../susfs-port/patches/*/ | head -1)
+          git apply --reject --whitespace=nowarn "$P/0002-susfs-v2.3.0-4.19.patch" 2>&1 | tee apply0002.log || true
+          echo "Rejected files: $(find . -name '*.rej' | wc -l)"
+          find . -name '*.rej' | sort
+
+      - name: Check each KernelSU Next branch
+        run: |
+          grep -rhoE '\bksu_[a-z0-9_]+' fs kernel security drivers/input include --include=*.c --include=*.h 2>/dev/null | sort -u > used.txt
+          echo "kernel references $(wc -l < used.txt) ksu_* names" | tee -a $GITHUB_STEP_SUMMARY
+          for ref in legacy legacy_susfs dev dev-susfs next next-susfs; do
+            if git -C KernelSU-Next rev-parse --verify -q origin/$ref > /dev/null; then
+              git -C KernelSU-Next checkout -q origin/$ref
+              grep -rhoE '\bksu_[a-z0-9_]+' KernelSU-Next/kernel 2>/dev/null | sort -u > defs_$ref.txt
+              comm -23 used.txt defs_$ref.txt > missing_$ref.txt
+              {
+                echo "### branch: $ref ($(git -C KernelSU-Next log -1 --format=%h' '%ad --date=short))"
+                echo "missing names: $(wc -l < missing_$ref.txt)"
+                head -15 missing_$ref.txt
+                echo "SUSFS options in its Kconfig:"
+                grep -E '^config KSU' KernelSU-Next/kernel/Kconfig | head -20
+              } | tee -a $GITHUB_STEP_SUMMARY
+            else
+              echo "branch $ref: not found" | tee -a $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ksun-dryrun
+          path: |
+            apply0002.log
+            used.txt
+            missing_*.txt
+          if-no-files-found: ignore
