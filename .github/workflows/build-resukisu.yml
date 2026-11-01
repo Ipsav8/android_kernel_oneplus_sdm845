@@ -137,11 +137,14 @@ jobs:
           if [ -f arch/arm64/configs/vendor/enchilada.config ]; then
             scripts/kconfig/merge_config.sh -m -O out out/.config arch/arm64/configs/vendor/enchilada.config 2>&1 | tee -a build.log
           fi
+          printf '# CONFIG_FUSE_BPF is not set\nCONFIG_MSM_VIDC_LEGACY_V4L2=y\n' > extra.fragment
+          scripts/kconfig/merge_config.sh -m -O out out/.config extra.fragment 2>&1 | tee -a build.log
           if [ "${{ inputs.with_root }}" = "true" ]; then
             echo "--- susfs.fragment:"; cat ../susfs-port/config/susfs.fragment
             scripts/kconfig/merge_config.sh -m -O out out/.config ../susfs-port/config/susfs.fragment 2>&1 | tee -a build.log
           fi
           make $ARGS olddefconfig 2>&1 | tee -a build.log
+          grep -E "CONFIG_FUSE_BPF|CONFIG_MSM_VIDC_LEGACY_V4L2" out/.config
           if [ "${{ inputs.with_root }}" = "true" ]; then
             grep -E "^CONFIG_KSU(_SUSFS)?=y" out/.config || { echo "KSU/SUSFS CONFIG DID NOT STICK:"; grep -i ksu out/.config | head -30; exit 1; }
           fi
@@ -211,6 +214,7 @@ jobs:
         if: always()
         with:
           name: build-info
+          include-hidden-files: true
           path: |
             build.log
             out/.config
